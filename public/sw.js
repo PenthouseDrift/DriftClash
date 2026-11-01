@@ -1,109 +1,13 @@
-const CACHE_NAME = "penthouse-drift-v2";
-const OFFLINE_URL = "/offline.html";
-const STATIC_ASSETS = [
-  OFFLINE_URL,
-  "/apple-touch-icon.png",
-  "/icons/icon-192.png",
-  "/icons/icon-512.png",
-  "/logo.png",
-];
-
-self.addEventListener("install", (event) => {
-  event.waitUntil(caches.open(CACHE_NAME).then((cache) => cache.addAll(STATIC_ASSETS)));
-});
-
+// DriftClash is a registration site now and no longer uses a service worker.
+// Browsers that installed the old one fetch this file, which clears its caches and removes itself.
+self.addEventListener("install", () => self.skipWaiting());
 self.addEventListener("activate", (event) => {
   event.waitUntil(
-    caches.keys()
-      .then((keys) => Promise.all(keys.filter((key) => key !== CACHE_NAME).map((key) => caches.delete(key))))
-      .then(() => self.clients.claim())
-  );
-});
-
-self.addEventListener("message", (event) => {
-  if (event.data === "SKIP_WAITING") self.skipWaiting();
-});
-
-self.addEventListener("fetch", (event) => {
-  const { request } = event;
-  if (request.method !== "GET") return;
-
-  const url = new URL(request.url);
-  if (url.origin !== self.location.origin || url.pathname.startsWith("/api/")) return;
-
-  if (request.mode === "navigate") {
-    event.respondWith(
-      fetch(request).catch(async () => {
-        // respondWith must resolve to a Response. If offline.html isn't cached
-        // (e.g. iOS evicted it), fall back to a minimal inline response rather
-        // than letting the promise resolve to undefined, which iOS renders as
-        // an error page.
-        const cached = await caches.match(OFFLINE_URL);
-        return cached || new Response("You're offline.", {
-          status: 503,
-          headers: { "Content-Type": "text/html; charset=utf-8" },
-        });
-      })
-    );
-    return;
-  }
-
-  const isStaticAsset = url.pathname.startsWith("/_next/static/") || STATIC_ASSETS.includes(url.pathname);
-  if (!isStaticAsset) return;
-
-  event.respondWith(
-    caches.match(request).then((cached) => {
-      if (cached) return cached;
-      return fetch(request).then(async (response) => {
-        if (response.ok) {
-          const cache = await caches.open(CACHE_NAME);
-          await cache.put(request, response.clone());
-        }
-        return response;
-      });
-    })
-  );
-});
-
-self.addEventListener("push", (event) => {
-  if (!event.data) return;
-
-  let data;
-  try {
-    data = event.data.json();
-  } catch {
-    data = { title: "Penthouse Drift", body: event.data.text(), url: "/dashboard" };
-  }
-
-  const options = {
-    body: data.body || "You have a new update.",
-    icon: data.icon || "/icons/icon-192.png",
-    badge: data.badge || "/icons/icon-192.png",
-    data: { url: data.url || "/dashboard" },
-  };
-
-  event.waitUntil(self.registration.showNotification(data.title || "Penthouse Drift", options));
-});
-
-self.addEventListener("notificationclick", (event) => {
-  event.notification.close();
-
-  let target = new URL("/dashboard", self.location.origin);
-  try {
-    const requested = new URL(event.notification.data?.url || "/dashboard", self.location.origin);
-    if (requested.origin === self.location.origin) target = requested;
-  } catch {
-    // Keep the safe same-origin dashboard target.
-  }
-
-  event.waitUntil(
-    self.clients.matchAll({ type: "window", includeUncontrolled: true }).then(async (clientList) => {
-      const existingClient = clientList.find((client) => new URL(client.url).origin === self.location.origin);
-      if (existingClient) {
-        if ("navigate" in existingClient) await existingClient.navigate(target.href);
-        return existingClient.focus();
-      }
-      return self.clients.openWindow(target.href);
-    })
+    caches
+      .keys()
+      .then((keys) => Promise.all(keys.map((key) => caches.delete(key))))
+      .then(() => self.registration.unregister())
+      .then(() => self.clients.matchAll({ type: "window" }))
+      .then((clients) => clients.forEach((client) => client.navigate(client.url)))
   );
 });

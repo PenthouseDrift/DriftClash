@@ -2,11 +2,13 @@ import { handleUpload, type HandleUploadBody } from "@vercel/blob/client";
 import { auth } from "@/lib/auth";
 import { NextResponse } from "next/server";
 
+/** Signed-in people can upload photos, but only into their own registration folder. */
 export async function POST(request: Request): Promise<NextResponse> {
   const session = await auth();
-  if (!session?.user) {
+  if (!session?.user?.id) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
+  const userId = session.user.id;
 
   const body = (await request.json()) as HandleUploadBody;
 
@@ -14,20 +16,19 @@ export async function POST(request: Request): Promise<NextResponse> {
     const jsonResponse = await handleUpload({
       body,
       request,
-      onBeforeGenerateToken: async () => {
+      onBeforeGenerateToken: async (pathname) => {
+        if (!pathname.startsWith(`registrations/${userId}/`) || pathname.includes("..")) {
+          throw new Error("Photos can only be added to your own registration");
+        }
         return {
           allowedContentTypes: ["image/jpeg", "image/png", "image/webp"],
           maximumSizeInBytes: 5 * 1024 * 1024, // 5MB
           addRandomSuffix: true,
-          tokenPayload: JSON.stringify({ userId: session.user.id }),
+          tokenPayload: JSON.stringify({ userId }),
         };
       },
-      onUploadCompleted: async ({ blob }) => {
-        // Could record blob URL in Redis here if needed
-        console.log("Upload completed:", blob.url);
-      },
+      onUploadCompleted: async () => {},
     });
-
     return NextResponse.json(jsonResponse);
   } catch (error) {
     return NextResponse.json(
