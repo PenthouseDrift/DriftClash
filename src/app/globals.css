@@ -1,0 +1,930 @@
+@import "tailwindcss";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+@theme inline {
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+body {
+  font-family: Arial, Helvetica, sans-serif;
+}
+
+html,
+body {
+  min-height: 100%;
+  background: #fafafa;
+}
+
+body {
+  /* vh fallback first for older browsers (e.g. Chrome 103), then dvh for
+     modern browsers which handle mobile browser chrome more accurately. */
+  min-height: 100vh;
+  min-height: 100dvh;
+}
+
+@media (prefers-color-scheme: dark) {
+  html,
+  body {
+    background: #09090b;
+  }
+}
+
+.pwa-mobile-header {
+  padding-top: calc(0.75rem + env(safe-area-inset-top, 0px));
+  padding-bottom: 0.75rem;
+}
+
+.pwa-bottom-nav {
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+.pwa-admin-bottom-nav {
+  height: calc(3.5rem + env(safe-area-inset-bottom, 0px));
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+.pwa-protected-content {
+  padding-top: calc(4rem + env(safe-area-inset-top, 0px));
+}
+
+.pwa-protected-bottom {
+  padding-bottom: calc(6rem + env(safe-area-inset-bottom, 0px));
+}
+
+.pwa-admin-content {
+  padding-top: calc(3.5rem + env(safe-area-inset-top, 0px));
+  padding-bottom: calc(4rem + env(safe-area-inset-bottom, 0px));
+}
+
+.pwa-install-banner {
+  padding-top: calc(0.5rem + env(safe-area-inset-top, 0px));
+  padding-bottom: 0.5rem;
+}
+
+.pwa-modal-safe {
+  padding-top: max(1rem, env(safe-area-inset-top, 0px));
+  padding-bottom: max(1rem, env(safe-area-inset-bottom, 0px));
+}
+
+@media (min-width: 768px) {
+  .pwa-protected-content,
+  .pwa-admin-content {
+    padding-top: 0;
+    padding-bottom: 0;
+  }
+
+  .pwa-protected-bottom {
+    padding-bottom: 0;
+  }
+}
+
+.pwa-notification-prompt {
+  bottom: calc(4.5rem + env(safe-area-inset-bottom, 0px));
+}
+
+@media (min-width: 768px) {
+  .pwa-notification-prompt {
+    bottom: 1rem;
+  }
+}
+
+/* ── Rich text editor / note content ───────────────────────────────────── */
+.rte-content:empty::before {
+  content: attr(data-placeholder);
+  color: #a1a1aa; /* zinc-400 */
+  pointer-events: none;
+}
+
+.rte-content h2,
+.note-html h2 {
+  font-size: 1.05rem;
+  font-weight: 800;
+  margin: 0.5rem 0 0.25rem;
+}
+
+.rte-content ul,
+.note-html ul {
+  list-style: disc;
+  padding-left: 1.25rem;
+  margin: 0.25rem 0;
+}
+
+.rte-content ol,
+.note-html ol {
+  list-style: decimal;
+  padding-left: 1.25rem;
+  margin: 0.25rem 0;
+}
+
+.rte-content a,
+.note-html a {
+  color: #2563eb; /* blue-600 */
+  text-decoration: underline;
+}
+
+.note-html p {
+  margin: 0.25rem 0;
+}
+
+/* New app experience: the shell already provides a Back button, so hide
+   each feature page's own "back" link when rendered inside it. */
+.new-shell [data-page-back],
+.new-shell [data-classic-only] {
+  display: none;
+}
+
+/* New app experience: filter chips scroll in a single row instead of
+   wrapping onto several lines. */
+.new-shell [data-chip-row] {
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  scrollbar-width: none;
+  margin-inline: -1rem;
+  padding-inline: 1rem;
+}
+.new-shell [data-chip-row]::-webkit-scrollbar {
+  display: none;
+}
+.new-shell [data-chip-row] > * {
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+/* Card maker printing: only the print layer (a direct child of <body>) prints. */
+[data-card-print] {
+  display: none;
+}
+@media print {
+  body > *:not([data-card-print]) {
+    display: none !important;
+  }
+  [data-card-print] {
+    display: block !important;
+    background: #fff;
+  }
+  [data-card-print] * {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+  html,
+  body {
+    background: #fff !important;
+  }
+  @page {
+    size: A4;
+    margin: 0;
+  }
+}
+
+/* ─────────────────────────────────────────────────────────────────────────
+   Member card packs: a little card "car" drifts in, drops off a pack, the
+   pack is opened, and the card is revealed. Classes are prefixed pc-.
+   Each effect has a plain, motionless fallback under prefers-reduced-motion.
+   ───────────────────────────────────────────────────────────────────────── */
+.pc-stage {
+  position: relative;
+  overflow: hidden;
+  border-radius: 1.5rem;
+  min-height: 30rem;
+  height: min(76vh, 36rem);
+  background: radial-gradient(120% 80% at 50% 105%, #3a2c08 0%, #121110 55%, #09090b 100%);
+  border: 1px solid rgba(201, 161, 59, 0.35);
+  isolation: isolate;
+}
+.pc-track {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 24%;
+  background: linear-gradient(180deg, #1b1b1e, #0d0d0f);
+  border-top: 2px solid rgba(201, 161, 59, 0.4);
+}
+.pc-track::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 52%;
+  height: 3px;
+  background: repeating-linear-gradient(90deg, rgba(232, 185, 35, 0.85) 0 26px, transparent 26px 62px);
+}
+.pc-center {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+}
+/* The pack pops in once the loader is done */
+.pc-pack-drop {
+  animation: pc-pack-drop 0.6s cubic-bezier(0.3, 0.9, 0.4, 1) both;
+}
+@keyframes pc-pack-drop {
+  0% {
+    opacity: 0;
+    transform: translateY(1.5rem) scale(0.7);
+  }
+  60% {
+    opacity: 1;
+    transform: translateY(-0.3rem) scale(1.05);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+.pc-flash {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  pointer-events: none;
+  background: radial-gradient(circle at 50% 50%, #fff 0%, rgba(255, 244, 200, 0.9) 25%, rgba(255, 255, 255, 0) 70%);
+  opacity: 0;
+  animation: pc-flash 0.7s 0.85s ease-out both;
+}
+@keyframes pc-flash {
+  0% {
+    opacity: 0;
+  }
+  25% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+.pc-flash-quick {
+  animation-delay: 0.4s;
+}
+
+/* Loading: a card car drifts round a ring while the card is being drawn */
+.pc-loader {
+  position: relative;
+  width: 12rem;
+  height: 12rem;
+}
+.pc-loader-ring {
+  position: absolute;
+  inset: 0;
+  border-radius: 9999px;
+  border: 2px dashed rgba(232, 185, 35, 0.35);
+  box-shadow: inset 0 0 2.5rem rgba(232, 185, 35, 0.12), 0 0 2rem rgba(232, 185, 35, 0.1);
+}
+.pc-loader-orbit {
+  position: absolute;
+  inset: 0;
+  animation: pc-orbit 1.7s linear infinite;
+}
+/* The glowing trail the car leaves behind it, brightest right at the car */
+.pc-loader-orbit::before {
+  content: "";
+  position: absolute;
+  inset: -0.3rem;
+  border-radius: 9999px;
+  background: conic-gradient(from -120deg, rgba(232, 185, 35, 0) 0deg, rgba(251, 191, 36, 0.9) 118deg, rgba(232, 185, 35, 0) 120deg);
+  -webkit-mask-image: radial-gradient(farthest-side, transparent 93%, #000 94%, #000 100%);
+  mask-image: radial-gradient(farthest-side, transparent 93%, #000 94%, #000 100%);
+}
+.pc-loader-car {
+  position: absolute;
+  left: 50%;
+  top: 0;
+  width: 2.3rem;
+  height: 3.2rem;
+  margin: -1.6rem 0 0 -1.15rem;
+  border-radius: 0.4rem;
+  background: linear-gradient(160deg, #1d1b14, #050505);
+  border: 2px solid #e8b923;
+  box-shadow: 0 0 1rem rgba(232, 185, 35, 0.65);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  /* sideways on the ring, nose pointing outwards: a drift */
+  transform: rotate(62deg);
+}
+.pc-loader-car img {
+  width: 70%;
+  height: auto;
+}
+.pc-loader-logo {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 5rem;
+  transform: translate(-50%, -50%);
+  animation: pc-logo-pulse 1.7s ease-in-out infinite;
+}
+@keyframes pc-orbit {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@keyframes pc-logo-pulse {
+  0%,
+  100% {
+    opacity: 0.75;
+    transform: translate(-50%, -50%) scale(0.94);
+  }
+  50% {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1.04);
+  }
+}
+.pc-loader-bar {
+  margin: 1.8rem auto 0;
+  width: 11rem;
+  height: 0.3rem;
+  border-radius: 9999px;
+  background: rgba(255, 255, 255, 0.1);
+  overflow: hidden;
+}
+.pc-loader-bar span {
+  display: block;
+  height: 100%;
+  width: 40%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, transparent, #fbbf24, transparent);
+  animation: pc-bar 1.3s ease-in-out infinite;
+}
+@keyframes pc-bar {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(260%);
+  }
+}
+
+/* The pack, in two pieces cut along the tear line: slide a finger across the top to peel the top piece off */
+.pc-tear {
+  position: relative;
+  width: min(10.5rem, 42vw);
+  aspect-ratio: 5 / 8;
+  filter: drop-shadow(0 0.8rem 1.2rem rgba(0, 0, 0, 0.55));
+}
+.pc-tear-idle {
+  animation: pc-tear-pulse 1.7s ease-in-out infinite;
+}
+@keyframes pc-tear-pulse {
+  0%,
+  100% {
+    filter: drop-shadow(0 0.8rem 1.2rem rgba(0, 0, 0, 0.55)) drop-shadow(0 0 0.5rem rgba(232, 185, 35, 0.3));
+  }
+  50% {
+    filter: drop-shadow(0 0.8rem 1.2rem rgba(0, 0, 0, 0.55)) drop-shadow(0 0 1.5rem rgba(251, 191, 36, 0.85));
+  }
+}
+.pc-tear-piece {
+  position: absolute;
+  inset: 0;
+}
+.pc-tear-top {
+  /* --p is how far it has been torn (0 to 1), --dir is 1 when torn from the left and -1 from the right */
+  transform-origin: var(--hinge, 100%) var(--tear-y);
+  transform: rotate(calc(var(--p, 0) * var(--dir, 1) * 24deg)) translateY(calc(var(--p, 0) * -3%));
+  transition: transform 0.4s cubic-bezier(0.3, 1.5, 0.5, 1);
+}
+.pc-tear-dragging .pc-tear-top {
+  transition: none;
+}
+/* Light leaking out of the gap as the top lifts */
+.pc-tear-gap {
+  position: absolute;
+  left: 4%;
+  right: 4%;
+  top: calc(var(--tear-y) - 2%);
+  height: 5%;
+  background: linear-gradient(180deg, transparent, rgba(255, 236, 170, 0.95) 48%, transparent);
+  opacity: calc(var(--p, 0) * 1.1);
+  filter: blur(2px);
+  pointer-events: none;
+}
+/* The bright tear that grows behind your finger */
+.pc-tear-line {
+  position: absolute;
+  top: calc(var(--tear-y) - 0.4%);
+  height: 0.9%;
+  width: calc(var(--p, 0) * 100%);
+  border-radius: 9999px;
+  background: linear-gradient(90deg, #fff, #ffe9a8);
+  box-shadow: 0 0 0.6rem #ffd75e, 0 0 1.3rem #fbbf24;
+  pointer-events: none;
+}
+.pc-swipe-zone {
+  position: absolute;
+  left: -14%;
+  right: -14%;
+  top: -4%;
+  height: 22%;
+  z-index: 3;
+  cursor: grab;
+  touch-action: pan-y;
+  border-radius: 0.8rem;
+}
+.pc-swipe-zone:active {
+  cursor: grabbing;
+}
+.pc-swipe-zone:focus-visible {
+  outline: 3px solid #fbbf24;
+  outline-offset: 2px;
+}
+/* A finger sliding along the top, until you start tearing */
+.pc-swipe-hint {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: calc(var(--tear-y) - 4%);
+  height: 9%;
+  pointer-events: none;
+  z-index: 2;
+}
+.pc-swipe-trail {
+  position: absolute;
+  left: 6%;
+  right: 6%;
+  top: 50%;
+  height: 2px;
+  background: repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.8) 0 6px, transparent 6px 12px);
+  opacity: 0.6;
+}
+.pc-swipe-finger {
+  position: absolute;
+  top: 12%;
+  left: 2%;
+  font-size: 1.8rem;
+  line-height: 1;
+  filter: drop-shadow(0 0.25rem 0.4rem rgba(0, 0, 0, 0.7));
+  animation: pc-swipe 1.9s ease-in-out infinite;
+}
+@keyframes pc-swipe {
+  0% {
+    left: 2%;
+    opacity: 0;
+  }
+  15% {
+    opacity: 1;
+  }
+  75% {
+    left: 76%;
+    opacity: 1;
+  }
+  100% {
+    left: 84%;
+    opacity: 0;
+  }
+}
+/* Opening: the top piece flies off, the rest shakes, then drops away as the card rises out */
+.pc-tear-top-gone {
+  animation: pc-tear-fly 0.75s cubic-bezier(0.3, 0.2, 0.2, 1) forwards;
+}
+@keyframes pc-tear-fly {
+  to {
+    transform: translate(calc(var(--dir, 1) * 45%), -170%) rotate(calc(var(--dir, 1) * 70deg));
+    opacity: 0;
+  }
+}
+.pc-tear-bottom-open {
+  animation: pc-tear-rumble 0.45s ease-in-out, pc-tear-drop 0.6s 0.45s ease-in forwards;
+}
+@keyframes pc-tear-rumble {
+  0%,
+  100% {
+    transform: translate(0, 0) rotate(0);
+  }
+  20% {
+    transform: translate(-4px, 1px) rotate(-2deg);
+  }
+  45% {
+    transform: translate(5px, -2px) rotate(2deg) scale(1.04);
+  }
+  70% {
+    transform: translate(-3px, 1px) rotate(-1deg) scale(1.06);
+  }
+}
+@keyframes pc-tear-drop {
+  to {
+    transform: translateY(2rem) scale(0.7);
+    opacity: 0;
+  }
+}
+
+/* Reveal: the card rises out and flips over, with a burst in the rarity's colour */
+.pc-reveal {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: min(17rem, 62vw);
+  transform: translate(-50%, -50%);
+  z-index: 4;
+}
+.pc-rise {
+  animation: pc-rise 0.9s cubic-bezier(0.2, 0.9, 0.3, 1) both;
+}
+@keyframes pc-rise {
+  0% {
+    opacity: 0;
+    transform: translateY(5rem) scale(0.45);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+.pc-flip {
+  perspective: 1400px;
+}
+.pc-flip-inner {
+  position: relative;
+  transform-style: preserve-3d;
+  animation: pc-flip 1s 0.45s cubic-bezier(0.25, 0.8, 0.25, 1) both;
+}
+@keyframes pc-flip {
+  from {
+    transform: rotateY(180deg);
+  }
+  to {
+    transform: rotateY(0);
+  }
+}
+.pc-face {
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+}
+.pc-face-back {
+  position: absolute;
+  inset: 0;
+  transform: rotateY(180deg);
+}
+
+/* The cards from one pack side by side: swipe or use the arrows to move between them. The
+   side padding lets the first and last card sit in the middle. */
+.pc-carousel {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 4;
+  display: flex;
+  gap: 1rem;
+  padding: 5rem calc(50% - min(17rem, 62vw) / 2);
+  overflow-x: auto;
+  overflow-y: hidden;
+  scroll-snap-type: x mandatory;
+  overscroll-behavior-x: contain;
+  scrollbar-width: none;
+}
+.pc-carousel::-webkit-scrollbar {
+  display: none;
+}
+.pc-carousel:focus-visible {
+  outline: 3px solid rgba(251, 191, 36, 0.8);
+  outline-offset: -3px;
+}
+.pc-slide {
+  flex: 0 0 min(17rem, 62vw);
+  scroll-snap-align: center;
+}
+/* Cards after the first, and the controls, appear once the first card has finished flipping. */
+.pc-slide-in {
+  animation: pc-fade-in 0.5s 1.5s ease-out both;
+}
+.pc-burst {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 14rem;
+  height: 14rem;
+  margin: -7rem 0 0 -7rem;
+  border-radius: 9999px;
+  border: 4px solid var(--pc-glow, #fbbf24);
+  box-shadow: 0 0 2.5rem var(--pc-glow, #fbbf24), inset 0 0 2rem var(--pc-glow, #fbbf24);
+  opacity: 0;
+  z-index: 3;
+  animation: pc-burst 1.2s 0.9s ease-out both;
+}
+.pc-burst-2 {
+  animation-delay: 1.15s;
+}
+@keyframes pc-burst {
+  0% {
+    opacity: 0.95;
+    transform: scale(0.2);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(3.1);
+  }
+}
+.pc-rays {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 150%;
+  aspect-ratio: 1;
+  margin-left: -75%;
+  margin-top: -75%;
+  z-index: 1;
+  pointer-events: none;
+  background: repeating-conic-gradient(from 0deg, var(--pc-glow, #fbbf24) 0deg 7deg, transparent 7deg 22deg);
+  -webkit-mask-image: radial-gradient(circle, #000 0%, transparent 62%);
+  mask-image: radial-gradient(circle, #000 0%, transparent 62%);
+  opacity: 0;
+  animation: pc-rays-in 1.2s 1s ease-out forwards, pc-spin 22s linear infinite;
+}
+.pc-rays-rainbow {
+  background: repeating-conic-gradient(from 0deg, #7df9ff 0deg 6deg, #a78bfa 6deg 12deg, #ff7ad9 12deg 18deg, #ffd75e 18deg 24deg, transparent 24deg 40deg);
+}
+@keyframes pc-rays-in {
+  to {
+    opacity: 0.55;
+  }
+}
+@keyframes pc-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+.pc-spark {
+  position: absolute;
+  z-index: 6;
+  width: 0.55rem;
+  height: 0.55rem;
+  background: #fff;
+  clip-path: polygon(50% 0, 62% 38%, 100% 50%, 62% 62%, 50% 100%, 38% 62%, 0 50%, 38% 38%);
+  filter: drop-shadow(0 0 0.35rem var(--pc-glow, #fbbf24));
+  opacity: 0;
+  animation: pc-twinkle 1.7s var(--d, 0s) ease-in-out infinite;
+}
+@keyframes pc-twinkle {
+  0%,
+  100% {
+    opacity: 0;
+    transform: scale(0.3) rotate(0);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.5) rotate(90deg);
+  }
+}
+.pc-fade-in {
+  animation: pc-fade-in 0.5s ease-out both;
+}
+@keyframes pc-fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+.pc-hint {
+  animation: pc-hint 1.4s ease-in-out infinite;
+}
+@keyframes pc-hint {
+  0%,
+  100% {
+    transform: translateY(0);
+    opacity: 0.85;
+  }
+  50% {
+    transform: translateY(-4px);
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pc-spark,
+  .pc-burst,
+  .pc-flash,
+  .pc-rays,
+  .pc-swipe-finger {
+    display: none;
+  }
+  .pc-pack-drop,
+  .pc-rise,
+  .pc-hint,
+  .pc-loader-orbit,
+  .pc-loader-logo,
+  .pc-loader-bar span,
+  .pc-tear-idle,
+  .pc-tear-bottom-open {
+    animation: none;
+  }
+  .pc-tear-top {
+    transition: none;
+  }
+  .pc-tear-top-gone {
+    animation: none;
+    opacity: 0;
+  }
+  .pc-tear-bottom-open {
+    opacity: 0.4;
+  }
+  .pc-tear-idle {
+    filter: drop-shadow(0 0.8rem 1.2rem rgba(0, 0, 0, 0.55)) drop-shadow(0 0 1rem rgba(251, 191, 36, 0.9));
+  }
+  .pc-flip-inner {
+    animation: pc-fade-in 0.4s both;
+    transform: none;
+  }
+  .pc-slide-in {
+    animation: pc-fade-in 0.4s both;
+  }
+  .pc-carousel {
+    scroll-behavior: auto;
+  }
+  .pc-face-back {
+    display: none;
+  }
+}
+
+/* Crystal shine on Legend and Mythic cards. Timing, angle and sparkle spots are set per card (see FullArtCard). */
+.fa-crystal-glint {
+  background: linear-gradient(var(--fa-angle, 115deg), rgba(255, 255, 255, 0) 38%, rgba(255, 255, 255, 0.6) 48%, rgba(190, 240, 255, 0.4) 52%, rgba(255, 255, 255, 0) 62%);
+  background-size: 300% 100%;
+  background-position: 160% 0;
+  animation: fa-crystal-glint var(--fa-dur, 5s) ease-in-out var(--fa-delay, 0s) infinite;
+}
+.fa-crystal-glint-gold {
+  background: linear-gradient(var(--fa-angle, 115deg), rgba(255, 255, 255, 0) 40%, rgba(255, 224, 140, 0.7) 49%, rgba(255, 120, 150, 0.4) 53%, rgba(255, 255, 255, 0) 62%);
+  background-size: 300% 100%;
+  background-position: 160% 0;
+}
+@keyframes fa-crystal-glint {
+  0%,
+  40% {
+    background-position: 160% 0;
+  }
+  80%,
+  100% {
+    background-position: -60% 0;
+  }
+}
+.fa-sparkle {
+  position: absolute;
+  background: var(--fa-sparkle, #fff);
+  clip-path: polygon(50% 0, 60% 40%, 100% 50%, 60% 60%, 50% 100%, 40% 60%, 0 50%, 40% 40%);
+  filter: drop-shadow(0 0 0.6cqw var(--fa-sparkle, #fff));
+  opacity: 0;
+  animation: fa-sparkle var(--fa-dur, 3s) ease-in-out var(--fa-delay, 0s) infinite;
+}
+@keyframes fa-sparkle {
+  0%,
+  100% {
+    opacity: 0;
+    transform: scale(0.3) rotate(0deg);
+  }
+  50% {
+    opacity: 0.95;
+    transform: scale(1) rotate(45deg);
+  }
+}
+.fa-prism {
+  mix-blend-mode: overlay;
+  opacity: 0.35;
+  background: conic-gradient(from 0deg at 30% 30%, #ff2d55, #ffb020, #fff1b8, #ff7ad9, #7df9ff, #ff2d55);
+  animation: fa-prism var(--fa-dur, 9s) linear var(--fa-delay, 0s) infinite;
+}
+@keyframes fa-prism {
+  from {
+    filter: hue-rotate(var(--fa-hue, 0deg));
+  }
+  to {
+    filter: hue-rotate(calc(var(--fa-hue, 0deg) + 360deg));
+  }
+}
+.fa-mythic-aura {
+  box-shadow: inset 0 0 6cqw rgba(255, 45, 85, 0.55), inset 0 0 1.5cqw rgba(255, 224, 140, 0.8);
+  animation: fa-mythic-aura var(--fa-dur, 3s) ease-in-out var(--fa-delay, 0s) infinite;
+}
+@keyframes fa-mythic-aura {
+  0%,
+  100% {
+    opacity: 0.35;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .fa-crystal-glint,
+  .fa-sparkle,
+  .fa-prism,
+  .fa-mythic-aura {
+    animation: none;
+  }
+  .fa-crystal-glint {
+    background-position: 30% 0;
+  }
+  .fa-sparkle {
+    opacity: 0.7;
+    transform: scale(0.8);
+  }
+}
+
+/* ── Animated borders: Legend rainbow glow and Mythic flames ─────────────────── */
+@property --fa-spin {
+  syntax: "<angle>";
+  initial-value: 0deg;
+  inherits: false;
+}
+@keyframes fa-spin {
+  to {
+    --fa-spin: 360deg;
+  }
+}
+
+/* Legend: crisp iridescent neon edge + multi-layer rainbow bloom */
+.fa-legend-aura,
+.fa-legend-ring {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: conic-gradient(
+    from var(--fa-spin),
+    #7df9ff 0deg,
+    #38bdf8 55deg,
+    #a78bfa 115deg,
+    #ff7ad9 180deg,
+    #ffd75e 245deg,
+    #5eead4 305deg,
+    #7df9ff 360deg
+  );
+  animation: fa-spin 5.5s linear var(--fa-delay, 0s) infinite;
+}
+.fa-legend-aura {
+  inset: -0.6cqw;
+  filter: blur(2.2cqw);
+  opacity: 0.9;
+}
+.fa-legend-ring {
+  padding: 0.95cqw;
+  box-shadow: 0 0 1.4cqw rgba(125, 249, 255, 0.55);
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask: linear-gradient(#000 0 0) content-box exclude, linear-gradient(#000 0 0);
+  mask-composite: exclude;
+}
+
+/* Printing, and anyone who prefers less motion, gets a still border. */
+.fa-still .fa-legend-aura,
+.fa-still .fa-legend-ring {
+  animation: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  .fa-legend-aura,
+  .fa-legend-ring {
+    animation: none;
+  }
+}
+
+/* ── Drift Clash Arcade Battle Arena Keyframes ───────────────────────────── */
+@keyframes clash-battle-shake {
+  0% { transform: translate(0, 0) rotate(0deg); }
+  12% { transform: translate(-6px, 2px) rotate(-2.5deg); }
+  25% { transform: translate(6px, -3px) rotate(2.5deg); }
+  37% { transform: translate(-7px, -1px) rotate(-3.5deg); }
+  50% { transform: translate(7px, 3px) rotate(3deg); }
+  62% { transform: translate(-5px, 1px) rotate(-2deg); }
+  75% { transform: translate(5px, -2px) rotate(2deg); }
+  87% { transform: translate(-3px, 2px) rotate(-1deg); }
+  100% { transform: translate(0, 0) rotate(0deg); }
+}
+
+@keyframes clash-spinout-left {
+  0% { transform: translate(0, 0) rotate(0deg) scale(1); opacity: 1; }
+  25% { transform: translate(-30px, -20px) rotate(-20deg) scale(0.95); opacity: 0.9; }
+  100% { transform: translate(-160%, 80px) rotate(-90deg) scale(0.35); opacity: 0; pointer-events: none; }
+}
+
+@keyframes clash-spinout-right {
+  0% { transform: translate(0, 0) rotate(0deg) scale(1); opacity: 1; }
+  25% { transform: translate(30px, -20px) rotate(20deg) scale(0.95); opacity: 0.9; }
+  100% { transform: translate(160%, 80px) rotate(90deg) scale(0.35); opacity: 0; pointer-events: none; }
+}
+
+@keyframes clash-winner-pulse {
+  0% { transform: scale(1.05); filter: drop-shadow(0 0 25px rgba(245, 158, 11, 0.7)); }
+  50% { transform: scale(1.1); filter: drop-shadow(0 0 45px rgba(245, 158, 11, 0.95)); }
+  100% { transform: scale(1.05); filter: drop-shadow(0 0 25px rgba(245, 158, 11, 0.7)); }
+}
+
+.animate-clash-shake {
+  animation: clash-battle-shake 0.32s ease-in-out infinite;
+}
+
+.animate-spinout-left {
+  animation: clash-spinout-left 0.9s cubic-bezier(0.32, 0, 0.67, 0) forwards;
+}
+
+.animate-spinout-right {
+  animation: clash-spinout-right 0.9s cubic-bezier(0.32, 0, 0.67, 0) forwards;
+}
+
+.animate-winner-pulse {
+  animation: clash-winner-pulse 1.3s ease-in-out infinite;
+}

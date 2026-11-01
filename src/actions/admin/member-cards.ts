@@ -1,0 +1,320 @@
+"use server";
+
+import { randomUUID } from "crypto";
+import { revalidatePath } from "next/cache";
+import { put } from "@vercel/blob";
+import { auth } from "@/lib/auth";
+import { redis } from "@/lib/redis";
+import type { MemberCard } from "@/lib/card-roll";
+import {
+  ALL_MEMBER_CARDS_INDEX,
+  MEMBER_CARD_ID_PATTERN,
+  fullArtCardKey,
+  memberCardKey,
+  memberCardsIndexKey,
+  parseStoredCard,
+  rebuildCommunityPool,
+  removeFromCommunityPool,
+} from "@/lib/member-card-store";
+import { deleteImage } from "@/lib/blob";
+import { isBlobUrl } from "@/lib/card-art-generate";
+import { getListingIdForCard, removeMarketListingRecord } from "@/tcg/storage";
+import type { ActionResult } from "@/types";
+
+/**
+ * Admin view of every card members have opened (including ones they re-rolled away, which are kept
+ * as archived copies). This is a management view with owner details; the cards themselves are
+ * community cards and look the same whoever holds them. Only admins can list or delete them.
+ */
+
+/** Most cards loaded at once. */
+const MAX_LISTED = 500;
+
+export interface AdminMemberCard extends MemberCard {
+  /** The member's name, from the card or their profile. */
+  owner: string;
+  ownerEmail: string;
+}
+
+async function requireAdmin(): Promise<boolean> {
+  const session = await auth();
+  return session?.user?.role === "admin";
+}
+
+const text = (v: unknown) => (typeof v === "string" ? v.trim() : "");
+
+/** Newest first. Each card is returned with who owns it. */
+export async function listAllMemberCards(limit = MAX_LISTED): Promise<{ cards: AdminMemberCard[]; total: number }> {
+  if (!(await requireAdmin())) return { cards: [], total: 0 };
+
+  const total = Number(await redis.zcard(ALL_MEMBER_CARDS_INDEX)) || 0;
+  const ids = (await redis.zrange(ALL_MEMBER_CARDS_INDEX, 0, Math.min(limit, MAX_LISTED) - 1, { rev: true })) as string[];
+  if (!ids || ids.length === 0) return { cards: [], total };
+
+  const rows = await redis.mget(...ids.map((id) => `usercard:${String(id)}`));
+  const stored = rows.map(parseStoredCard).filter((c): c is NonNullable<typeof c> => c !== null);
+
+  // Who each card belongs to: one profile lookup per member, not per card.
+  const userIds = [...new Set(stored.map((c) => c.userId))];
+  const profiles = new Map<string, { name: string; email: string }>();
+  await Promise.all(
+    userIds.map(async (id) => {
+      const p = await redis.hmget<Record<string, unknown>>(`member:${id}`, "nickname", "name", "email");
+      profiles.set(id, { name: text(p?.nickname) || text(p?.name), email: text(p?.email) });
+    })
+  );
+
+  const cards = stored.map((s) => {
+    // Never send the stored car-photo address to the browser.
+    const { referenceUrl, ...card } = s;
+    void referenceUrl;
+    const profile = profiles.get(s.userId);
+    return { ...card, owner: profile?.name || s.ownerName || "Unknown member", ownerEmail: profile?.email ?? "" };
+  });
+  return { cards, total };
+}
+
+/**
+ * Delete a card for good. Admins only (members cannot delete cards, not even their own). A card is
+ * one record that is both in its owner's collection and in the community pool that second-slot
+ * cards are built from, so deleting it removes it from both. Its artwork is deleted too.
+ */
+export async function deleteMemberCard(cardId: string): Promise<ActionResult<{ id: string }>> {
+  try {
+    if (!(await requireAdmin())) return { success: false, error: "Only an admin can delete cards" };
+    const id = text(cardId);
+    if (!MEMBER_CARD_ID_PATTERN.test(id)) return { success: false, error: "Invalid card" };
+
+    const card = parseStoredCard(await redis.get(memberCardKey(id)));
+    const listingId = await getListingIdForCard(id);
+    if (listingId) {
+      await removeMarketListingRecord(listingId, id).catch(() => {});
+    }
+
+    // The record and both lists in one go. The lists are cleaned even if the record is already gone,
+    // so a stray entry can't linger in the pool.
+    const tx = redis.multi().del(memberCardKey(id)).zrem(ALL_MEMBER_CARDS_INDEX, id);
+    if (card) tx.zrem(memberCardsIndexKey(card.userId), id);
+    await tx.exec();
+    // If it stood in the community pool for its driver and car, another of theirs takes over (or they leave the pool).
+    if (card) await removeFromCommunityPool(card);
+
+    // Best-effort: the artwork file is only used by this card (skip shared set/pack card images).
+    if (card && !card.featured && !card.packId && isBlobUrl(card.imageUrl)) {
+      try {
+        await deleteImage(card.imageUrl);
+      } catch {
+        /* the card is already gone; a leftover file is harmless */
+      }
+    }
+
+    revalidatePath("/cards");
+    revalidatePath("/admin/member-cards");
+    return { success: true, data: { id } };
+  } catch (error) {
+    return { success: false, error: error instanceof Error ? error.message : "Could not delete the card" };
+  }
+}
+
+/**
+ * Add any stored card that is missing from the admin list (and from its member's own list). Needed
+ * once for cards opened before the admin list existed. Safe to run again: it never changes a card
+ * that is already listed.
+ */
+export async function rebuildMemberCardIndex(): Promise<ActionResult<{ scanned: number; listed: number; pool: number }>> {
+  try {
+    if (!(await requireAdmin())) return { success: false, error: "Only admins can do this" };
+
+    let cursor: string | number = 0;
+    let scanned = 0;
+    let listed = 0;
+    for (let round = 0; round < 100; round++) {
+      const [next, keys] = (await redis.scan(cursor, { match: "usercard:*", count: 200 })) as [string | number, string[]];
+      cursor = next;
+      if (keys.length > 0) {
+        const rows = await redis.mget(...keys);
+        for (const row of rows) {
+          const card = parseStoredCard(row);
+          if (!card) continue;
+          scanned++;
+          const added = await redis.zadd(
+            ALL_MEMBER_CARDS_INDEX,
+            { nx: true },
+            { score: card.archived ? card.createdAt - 1 : card.createdAt, member: card.id }
+          );
+          if (added) listed++;
+          if (!card.archived) {
+            await redis.zadd(memberCardsIndexKey(card.userId), { nx: true }, { score: card.createdAt, member: card.id });
+          }
+        }
+      }
+      if (String(cursor) === "0") break;
+    }
+
+    // Also rebuild the community pool (one card per driver and car) from the cards as they are now.
+    const pool = await rebuildCommunityPool();
+
+    revalidatePath("/admin/member-cards");
+    return { success: true, data: { scanned, listed, pool } };
+  } catch (error) {
+    return { success: false, error: error instanceof Error ? error.message : "Could not rebuild the card list" };
+  }
+}
+
+export interface UnoptimizedCardsScanResult {
+  urls: string[];
+  totalCardsToUpdate: number;
+}
+
+export interface OptimizeSingleImageResult {
+  oldUrl: string;
+  newUrl: string;
+  updatedCards: number;
+  bytesSaved: number;
+}
+
+function isAlreadyOptimizedWebp(url: string): boolean {
+  try {
+    const u = new URL(url);
+    return u.pathname.toLowerCase().endsWith(".webp");
+  } catch {
+    return false;
+  }
+}
+
+async function scanAllStoredCardRecords() {
+  const [memberIds, fullArtIds, origIds] = await Promise.all([
+    redis.zrange(ALL_MEMBER_CARDS_INDEX, 0, -1) as Promise<string[]>,
+    redis.zrange("fullart:index", 0, -1) as Promise<string[]>,
+    redis.zrange("cards:index", 0, -1) as Promise<string[]>,
+  ]);
+
+  const keysToLoad: string[] = [
+    ...(memberIds ?? []).map((id) => memberCardKey(String(id))),
+    ...(fullArtIds ?? []).map((id) => fullArtCardKey(String(id))),
+    ...(origIds ?? []).map((id) => `card:${String(id)}`),
+  ];
+
+  type CardRecord = { redisKey: string; data: Record<string, unknown> };
+  const recordsByUrl = new Map<string, CardRecord[]>();
+  const protectedReferenceUrls = new Set<string>();
+
+  for (let i = 0; i < keysToLoad.length; i += 100) {
+    const slice = keysToLoad.slice(i, i + 100);
+    if (slice.length === 0) continue;
+    const rows = await redis.mget(...slice);
+    for (let j = 0; j < slice.length; j++) {
+      const raw = rows[j];
+      if (!raw) continue;
+      try {
+        const parsed = typeof raw === "string" ? JSON.parse(raw) : raw;
+        if (!parsed || typeof parsed !== "object") continue;
+        const obj = parsed as Record<string, unknown>;
+        if (typeof obj.referenceUrl === "string" && isBlobUrl(obj.referenceUrl)) {
+          protectedReferenceUrls.add(obj.referenceUrl);
+        }
+        const imageUrl = typeof obj.imageUrl === "string" ? obj.imageUrl.trim() : "";
+        if (!isBlobUrl(imageUrl) || isAlreadyOptimizedWebp(imageUrl)) continue;
+        const list = recordsByUrl.get(imageUrl) ?? [];
+        list.push({ redisKey: slice[j], data: obj });
+        recordsByUrl.set(imageUrl, list);
+      } catch {
+        /* skip malformed row */
+      }
+    }
+  }
+
+  return { recordsByUrl, protectedReferenceUrls };
+}
+
+/**
+ * List all unique unoptimised (non-WebP) card image URLs across member cards, admin full-art cards,
+ * and admin original cards.
+ */
+export async function listUnoptimizedCardImages(): Promise<ActionResult<UnoptimizedCardsScanResult>> {
+  try {
+    if (!(await requireAdmin())) return { success: false, error: "Only admins can optimise card images" };
+    const { recordsByUrl } = await scanAllStoredCardRecords();
+    const urls = [...recordsByUrl.keys()];
+    let totalCardsToUpdate = 0;
+    for (const list of recordsByUrl.values()) totalCardsToUpdate += list.length;
+    return { success: true, data: { urls, totalCardsToUpdate } };
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "Could not scan stored card images",
+    };
+  }
+}
+
+/**
+ * Save a compressed WebP buffer for `oldUrl` to Vercel Blob, update all stored cards referencing `oldUrl`
+ * with the new `.webp` URL, and remove the old unoptimised PNG/JPEG blob.
+ */
+export async function saveOptimizedCardImage(input: {
+  oldUrl: string;
+  webpBase64: string;
+  originalBytes: number;
+}): Promise<ActionResult<OptimizeSingleImageResult>> {
+  try {
+    if (!(await requireAdmin())) return { success: false, error: "Only admins can optimise card images" };
+    const { oldUrl, webpBase64, originalBytes } = input;
+    if (!isBlobUrl(oldUrl)) return { success: false, error: "Invalid source image URL" };
+
+    const optimizedBuffer = Buffer.from(webpBase64, "base64");
+    if (optimizedBuffer.length === 0 || optimizedBuffer.length > 5 * 1024 * 1024) {
+      return { success: false, error: "Invalid compressed image data" };
+    }
+
+    const { recordsByUrl, protectedReferenceUrls } = await scanAllStoredCardRecords();
+    const cards = recordsByUrl.get(oldUrl) ?? [];
+    if (cards.length === 0) {
+      return {
+        success: true,
+        data: { oldUrl, newUrl: oldUrl, updatedCards: 0, bytesSaved: 0 },
+      };
+    }
+
+    const folder = oldUrl.includes("/member-cards/") ? "member-cards" : "card-art";
+    const blob = await put(`${folder}/ai-${randomUUID()}.webp`, optimizedBuffer, {
+      access: "public",
+      contentType: "image/webp",
+      addRandomSuffix: true,
+      token: process.env.BLOB_READ_WRITE_TOKEN,
+    });
+
+    const tx = redis.multi();
+    for (const rec of cards) {
+      rec.data.imageUrl = blob.url;
+      tx.set(rec.redisKey, JSON.stringify(rec.data));
+    }
+    await tx.exec();
+
+    if (!protectedReferenceUrls.has(oldUrl)) {
+      try {
+        await deleteImage(oldUrl);
+      } catch {
+        /* best-effort cleanup */
+      }
+    }
+
+    revalidatePath("/cards");
+    revalidatePath("/admin/member-cards");
+    revalidatePath("/admin/card-maker");
+
+    return {
+      success: true,
+      data: {
+        oldUrl,
+        newUrl: blob.url,
+        updatedCards: cards.length,
+        bytesSaved: Math.max(0, (Number(originalBytes) || 0) - optimizedBuffer.length),
+      },
+    };
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "Could not save optimised card image",
+    };
+  }
+}

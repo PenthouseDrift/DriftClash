@@ -1,0 +1,206 @@
+import { NextResponse } from "next/server";
+import { getWebsiteListings, getListingAuthorName } from "@/actions/marketplace";
+import { isListingReserved, variantBuyable, isVariantReserved } from "@/lib/marketplace-reserved";
+
+export const dynamic = "force-dynamic";
+
+/**
+ * Public, cross-origin marketplace feed for the marketing website.
+ *
+ * Returns member-posted listings that are flagged to show on the website and
+ * are still available. No auth: this route lives under /api/public/* which is
+ * excluded from the auth middleware. CORS is added manually since the app has
+ * no global CORS (mirrors /api/public/gallery).
+ */
+
+const DEFAULT_ALLOWED_ORIGINS = [
+  "https://penthousedrift.com",
+  "https://www.penthousedrift.com",
+  "https://app.penthousedrift.com",
+  "https://penthousedrift.vercel.app",
+  "http://localhost:3000",
+  "http://localhost:3001",
+];
+
+const ALLOWED_ORIGINS = new Set(
+  process.env.PUBLIC_ALLOWED_ORIGINS
+    ? process.env.PUBLIC_ALLOWED_ORIGINS.split(",").map((o) => o.trim()).filter(Boolean)
+    : DEFAULT_ALLOWED_ORIGINS
+);
+
+function corsHeaders(origin: string | null): Record<string, string> {
+  const headers: Record<string, string> = {
+    "Access-Control-Allow-Methods": "GET, OPTIONS",
+    "Access-Control-Allow-Headers": "Content-Type",
+    Vary: "Origin",
+  };
+  if (origin && ALLOWED_ORIGINS.has(origin)) {
+    headers["Access-Control-Allow-Origin"] = origin;
+  }
+  return headers;
+}
+
+type PublicListing = {
+  id: string;
+  title: string;
+  description: string;
+  /** Product category (one of MARKETPLACE_CATEGORIES); "" if uncategorised. */
+  category: string;
+  price: number;
+  priceLabel: string;
+  images: string[];
+  cover: string;
+  location: string;
+  seller: string;
+  atTrack: boolean;
+  meetAtTrack: boolean;
+  /** True when the item is ASBO-RC consignment stock sold by Penthouse Drift. */
+  soldByAsboRc: boolean;
+  /** True when the "Sold by PHD" badge should show (first-party or ASBO). */
+  soldByPhd: boolean;
+  /**
+   * True when the member's own item is being sold on their behalf by Penthouse
+   * Drift ("Facilitated by PHD" badge). Only the boolean is exposed — the owner
+   * payout figure is private (owner/admin only) and never sent to the website.
+   */
+  facilitatedByPhd: boolean;
+  /**
+   * True when the listing is effectively reserved for display: it still has
+   * physical stock but none is buyable because it's all held. Buying is blocked
+   * and a "Reserved" badge is shown.
+   */
+  reserved: boolean;
+  /** Units currently held by an admin (non-variant listing level). */
+  reservedCount: number;
+  /** Listing status — "sold" items are shown greyed/marked on the website. */
+  status: "available" | "sold";
+  /** Total units in the listing. */
+  quantity: number;
+  /** Units a customer can buy now (quantity - soldCount - reservedCount). */
+  available: number;
+  /** True when the listing offers selectable variants (each with own price/stock). */
+  hasVariations: boolean;
+  /** Label for the variations, e.g. "Colour" (empty when none). */
+  variationLabel: string;
+  /** Variant options for the website to render (price + remaining stock each). */
+  variants: {
+    name: string;
+    price: number;
+    priceLabel: string;
+    /** Units a customer can buy now (stock minus sold minus hold). */
+    available: number;
+    /** True when this option still has stock but is fully held. */
+    reserved: boolean;
+    /** Units of this option currently held by an admin. */
+    reservedCount: number;
+  }[];
+  contact: {
+    name: string;
+    method: "email" | "phone" | "facebook" | "instagram" | "other";
+    value: string;
+  };
+  createdAt: number;
+};
+
+function priceLabel(price: number): string {
+  if (price <= 0) return "Free / Offers";
+  return new Intl.NumberFormat("en-GB", {
+    style: "currency",
+    currency: "GBP",
+    maximumFractionDigits: price % 1 === 0 ? 0 : 2,
+  }).format(price);
+}
+
+export async function OPTIONS(request: Request) {
+  const origin = request.headers.get("origin");
+  return new NextResponse(null, { status: 204, headers: corsHeaders(origin) });
+}
+
+export async function GET(request: Request) {
+  const { searchParams } = new URL(request.url);
+  const limit = Math.min(Number(searchParams.get("limit")) || 24, 60);
+  const cors = corsHeaders(request.headers.get("origin"));
+
+  try {
+    const listings = await getWebsiteListings(limit);
+
+    // Resolve seller display names in parallel (de-duped by userId).
+    const uniqueUserIds = [...new Set(listings.map((l) => l.userId))];
+    const nameEntries = await Promise.all(
+      uniqueUserIds.map(async (uid) => [uid, await getListingAuthorName(uid)] as [string, string])
+    );
+    const names = new Map(nameEntries);
+
+    const items: PublicListing[] = listings
+      .filter((l) => l.images.length > 0)
+      .map((l) => ({
+        id: l.listingId,
+        title: l.title,
+        description: l.description,
+        category: l.category,
+        price: l.price,
+        priceLabel: priceLabel(l.price),
+        images: l.images,
+        cover: l.images[0],
+        location: l.location,
+        seller: names.get(l.userId) || "Member",
+        atTrack: l.atTrack,
+        meetAtTrack: l.meetAtTrack,
+        soldByAsboRc: l.soldByAsboRc,
+        soldByPhd: l.soldByPhd || l.soldByAsboRc,
+        facilitatedByPhd: l.facilitatedByPhd,
+        reserved: isListingReserved(l),
+        reservedCount: Math.max(0, l.reservedCount || 0),
+        status: l.status,
+        quantity: l.quantity,
+        // Buyable = physical stock minus sold minus any admin hold.
+        available: Math.max(0, l.quantity - l.soldCount - Math.max(0, l.reservedCount || 0)),
+        hasVariations: l.hasVariations,
+        variationLabel: l.variationLabel,
+        variants: l.hasVariations
+          ? l.variants.map((v) => ({
+              name: v.name,
+              price: v.price,
+              priceLabel: priceLabel(v.price),
+              available: variantBuyable(v),
+              reserved: isVariantReserved(v),
+              reservedCount: Math.max(0, v.reservedCount || 0),
+            }))
+          : [],
+        // Sold-by-PHD and Facilitated-by-PHD items are bought in person at the
+        // track (PHD handles the sale), so expose no seller contact — the
+        // website shows a "come to the track" note instead.
+        contact: l.soldByPhd || l.facilitatedByPhd
+          ? { name: "", method: "other" as const, value: "" }
+          : {
+              name: l.contactName || names.get(l.userId) || "Member",
+              method: l.contactMethod,
+              value: l.contactValue,
+            },
+        createdAt: l.createdAt,
+      }));
+
+    return NextResponse.json(
+      { listings: items.slice(0, limit) },
+      {
+        headers: {
+          ...cors,
+          // Short browser/CDN cache so the public website reflects new listings
+          // and edits within ~30s, while stale-while-revalidate keeps responses
+          // instant (serve the cached copy, refresh in the background). The
+          // server read itself is still collapsed to ~1 Redis hit/min by the
+          // getWebsiteListings unstable_cache, so this doesn't add DB load.
+          "Cache-Control": "public, max-age=30, stale-while-revalidate=60",
+        },
+      }
+    );
+  } catch (error) {
+    return NextResponse.json(
+      {
+        listings: [],
+        error: error instanceof Error ? error.message : "Failed to load marketplace",
+      },
+      { status: 500, headers: cors }
+    );
+  }
+}

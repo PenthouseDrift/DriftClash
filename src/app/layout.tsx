@@ -1,0 +1,82 @@
+import type { Metadata, Viewport } from "next";
+import { Geist, Geist_Mono } from "next/font/google";
+import "./globals.css";
+import { Analytics } from "@vercel/analytics/next";
+import { SessionProvider } from "@/components/SessionProvider";
+import { ThemeProvider } from "@/components/ThemeProvider";
+import { OfflineIndicator } from "@/components/ui/OfflineIndicator";
+import { PushNotificationSubscriber } from "@/components/PushNotificationSubscriber";
+import { ServiceWorkerRegister } from "@/components/ServiceWorkerRegister";
+import { InstallBanner } from "@/components/InstallBanner";
+import { DriftWheelIntro } from "@/components/ui/DriftWheelIntro";
+
+const geistSans = Geist({
+  variable: "--font-geist-sans",
+  subsets: ["latin"],
+});
+
+const geistMono = Geist_Mono({
+  variable: "--font-geist-mono",
+  subsets: ["latin"],
+});
+
+export const metadata: Metadata = {
+  title: "DriftClash — Penthouse TCG",
+  description: "Collect, battle, trade, and forge custom RC drift trading cards.",
+  icons: {
+    icon: [
+      { url: "/favicon.png", type: "image/png", sizes: "32x32" },
+      { url: "/favicon-48.png", type: "image/png", sizes: "48x48" },
+    ],
+    apple: [{ url: "/apple-touch-icon.png", type: "image/png", sizes: "180x180" }],
+  },
+  appleWebApp: {
+    capable: true,
+    // "default" keeps app content below the iOS status bar. "black-translucent"
+    // extends the web view under the notch/clock, hiding the top of the UI
+    // unless every top-level element carries safe-area-inset padding.
+    statusBarStyle: "default",
+    title: "DriftClash",
+  },
+  other: {
+    "mobile-web-app-capable": "yes",
+  },
+};
+
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  viewportFit: "cover",
+  colorScheme: "light dark",
+  themeColor: [
+    { media: "(prefers-color-scheme: light)", color: "#ffffff" },
+    { media: "(prefers-color-scheme: dark)", color: "#09090b" },
+  ],
+};
+
+export default function RootLayout({
+  children,
+}: Readonly<{
+  children: React.ReactNode;
+}>) {
+  return (
+    <html
+      lang="en"
+      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
+    >
+      <body className="min-h-full flex flex-col bg-zinc-50 dark:bg-zinc-950">
+        <SessionProvider>
+          <ThemeProvider>
+            <DriftWheelIntro autoPlayInitial />
+            <InstallBanner />
+            <ServiceWorkerRegister />
+            <OfflineIndicator />
+            <PushNotificationSubscriber />
+            {children}
+          </ThemeProvider>
+        </SessionProvider>
+        <Analytics />
+      </body>
+    </html>
+  );
+}
