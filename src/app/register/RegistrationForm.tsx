@@ -12,6 +12,7 @@ import {
   type RegistrationInput,
 } from "@/lib/registration";
 import { PhotoUploader } from "./PhotoUploader";
+import { submitGuestRegistration } from "../join/actions";
 import { submitRegistration } from "./actions";
 
 const inputCls =
@@ -60,14 +61,20 @@ export function RegistrationForm({
   userId,
   initial,
   isUpdate,
+  guest = false,
 }: {
+  /** The signed-in person's id, or for a guest the "guest-..." id their photos are kept under. */
   userId: string;
   initial: RegistrationInput;
   isUpdate: boolean;
+  /** Sending without signing up: sends through the guest route, with no email. */
+  guest?: boolean;
 }) {
   const router = useRouter();
   const [data, setData] = useState<RegistrationInput>(initial);
   const [error, setError] = useState("");
+  // A hidden field. People never see it, so only an automated sender fills it in.
+  const [website, setWebsite] = useState("");
   const [pending, startTransition] = useTransition();
   const errorRef = useRef<HTMLParagraphElement>(null);
 
@@ -84,9 +91,11 @@ export function RegistrationForm({
     startTransition(async () => {
       // Independent drivers have no club, so no club country is sent either.
       const toSend = data.club.inClub ? data : { ...data, club: { ...data.club, country: "" } };
-      const result = await submitRegistration(toSend);
+      const result = guest
+        ? await submitGuestRegistration({ guestId: userId, website, registration: toSend })
+        : await submitRegistration(toSend);
       if (result.ok) {
-        router.push("/register/thanks");
+        router.push(guest ? "/join/thanks" : "/register/thanks");
       } else {
         setError(result.error);
         errorRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
@@ -109,6 +118,16 @@ export function RegistrationForm({
             <Text maxLength={60} value={driver.nickname} onChange={(v) => setDriver("nickname", v)} />
           </Field>
         </div>
+        {guest && (
+          <>
+            <div aria-hidden className="absolute left-[-9999px] h-0 w-0 overflow-hidden">
+              <label>
+                Leave this empty
+                <input type="text" tabIndex={-1} autoComplete="off" value={website} onChange={(e) => setWebsite(e.target.value)} />
+              </label>
+            </div>
+          </>
+        )}
       </fieldset>
 
       {/* ── Club ────────────────────────────────────────────────────── */}
@@ -284,15 +303,18 @@ export function RegistrationForm({
             DriftClash. I have the right to share these photos. <span className="text-amber-400">*</span>
           </span>
         </label>
-        <label className="flex cursor-pointer items-start gap-3 text-sm text-zinc-200">
-          <input
-            type="checkbox"
-            checked={data.consentMarketing}
-            onChange={(e) => setData((d) => ({ ...d, consentMarketing: e.target.checked }))}
-            className="mt-0.5 h-5 w-5 shrink-0 accent-amber-500"
-          />
-          <span>Keep me posted about DriftClash and Penthouse Drift news (optional).</span>
-        </label>
+        {/* No email is collected without signing in, so there is nothing to send news to. It is always "no". */}
+        {!guest && (
+          <label className="flex cursor-pointer items-start gap-3 text-sm text-zinc-200">
+            <input
+              type="checkbox"
+              checked={data.consentMarketing}
+              onChange={(e) => setData((d) => ({ ...d, consentMarketing: e.target.checked }))}
+              className="mt-0.5 h-5 w-5 shrink-0 accent-amber-500"
+            />
+            <span>Keep me posted about DriftClash and Penthouse Drift news (optional).</span>
+          </label>
+        )}
       </fieldset>
 
       {error && (

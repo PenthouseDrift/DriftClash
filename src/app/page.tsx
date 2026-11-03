@@ -59,6 +59,14 @@ export default async function LandingPage() {
             {ctaLabel} →
           </Link>
         </div>
+        {!session?.user && (
+          <p className="mt-4 text-sm text-zinc-400">
+            Don’t want to sign in?{" "}
+            <Link href="/join" className="font-bold text-amber-400 underline hover:text-amber-300 focus-visible:outline-2 focus-visible:outline-amber-400">
+              Register without signing up
+            </Link>
+          </p>
+        )}
       </section>
 
       <section aria-labelledby="what-heading" className="mx-auto max-w-5xl px-4 pb-14 sm:px-6">

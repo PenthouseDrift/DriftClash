@@ -86,12 +86,20 @@ export type RegistrationCar = z.infer<typeof carSchema>;
 
 export type RegistrationStatus = "new" | "reviewed";
 
-/** A saved registration. `id` is the person's Google account id, so each person has one. */
+/** "google": signed in, so one registration per person that they can update. "guest": sent without signing up. */
+export type RegistrationSource = "google" | "guest";
+
+/**
+ * A saved registration. For a signed-in registration `id` is the person's Google account id, so each person has one.
+ * A guest registration (sent without signing up) has an id like "guest-<uuid>" and no email, Google name or picture
+ * (those are blank). Records saved before `source` existed are signed-in ones.
+ */
 export interface Registration extends RegistrationInput {
   id: string;
   email: string;
   googleName: string;
   googleImage: string;
+  source?: RegistrationSource;
   status: RegistrationStatus;
   createdAt: number;
   updatedAt: number;
@@ -137,4 +145,16 @@ export function emptyRegistrationInput(name = ""): RegistrationInput {
     consentGameData: true as const,
     consentMarketing: false,
   };
+}
+
+/** The id of a registration sent without signing up. Its photos are kept under registrations/<this id>/. */
+export const GUEST_ID_PATTERN = /^guest-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+
+/** Every photo address in a registration (the club logo and photos, and each car's photos). */
+export function photoUrlsOf(input: RegistrationInput): string[] {
+  return [
+    ...(input.club.logo ? [input.club.logo] : []),
+    ...input.club.photos,
+    ...input.cars.flatMap((car) => [...car.photos, ...car.chassisPhotos]),
+  ];
 }

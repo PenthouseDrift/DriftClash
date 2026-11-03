@@ -55,7 +55,8 @@ export function PhotoUploader({
         const small = await shrink(file);
         const blob = await upload(`registrations/${userId}/${crypto.randomUUID()}.jpg`, small, {
           access: "public",
-          handleUploadUrl: "/api/upload",
+          // A registration sent without signing in has a guest folder and its own, narrower, upload route.
+          handleUploadUrl: userId.startsWith("guest-") ? "/api/upload-guest" : "/api/upload",
           contentType: "image/jpeg",
         });
         added.push(blob.url);
