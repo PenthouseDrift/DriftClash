@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation";
+import { CardsTrio } from "@/components/CardsShowcase";
 import { auth } from "@/lib/auth";
 import { emptyRegistrationInput, type RegistrationInput } from "@/lib/registration";
 import { getRegistration } from "@/lib/registration-store";
@@ -28,14 +29,17 @@ export default async function RegisterPage() {
 
   return (
     <div className="mx-auto max-w-3xl space-y-6 px-4 py-10 sm:px-6">
-      <div className="space-y-2">
-        <h1 className="text-3xl font-black text-white">
-          {existing ? "Update your registration" : "Register for DriftClash"}
-        </h1>
-        <p className="text-sm text-zinc-400">
-          Signed in as {user.email}. Fields marked <span className="text-amber-400">*</span> are required. Photos are
-          resized on your device before they upload.
-        </p>
+      <div className="flex items-center gap-4 sm:gap-6">
+        <div className="min-w-0 flex-1 space-y-2">
+          <h1 className="text-3xl font-black text-white">
+            {existing ? "Update your registration" : "Register for DriftClash"}
+          </h1>
+          <p className="text-sm text-zinc-400">
+            Signed in as {user.email}. Fields marked <span className="text-amber-400">*</span> are required. Photos are
+            resized on your device before they upload.
+          </p>
+        </div>
+        <CardsTrio className="w-28 shrink-0 sm:w-44" />
       </div>
       <RegistrationForm userId={user.id} initial={initial} isUpdate={Boolean(existing)} />
     </div>

@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { CardsFan } from "@/components/CardsShowcase";
 import { auth } from "@/lib/auth";
 import { getRegistration } from "@/lib/registration-store";
 
@@ -67,6 +68,12 @@ export default async function LandingPage() {
             </Link>
           </p>
         )}
+        <div className="mt-12">
+          <CardsFan />
+          <p className="mx-auto mt-4 max-w-xl text-sm text-zinc-400">
+            Cards run from Bronze up to Mythic, each with the car, its driver and its stats. Register your cars and they could be next.
+          </p>
+        </div>
       </section>
 
       <section aria-labelledby="what-heading" className="mx-auto max-w-5xl px-4 pb-14 sm:px-6">
