@@ -15,10 +15,31 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
+const SITE_TITLE = "DriftClash | Register your club, driver and cars";
+const SITE_DESCRIPTION =
+  "Register your RC drift club, your driver profile and your cars to be part of DriftClash, the Penthouse Drift trading card game.";
+/** The 1200x630 share card in /public, used for link previews on Facebook, X, WhatsApp, Discord and so on. */
+const SHARE_IMAGE = { url: "/og-image.jpg", width: 1200, height: 630, alt: "DriftClash trading cards: Bronze, Silver, Mythic, Gold and Legend" };
+
 export const metadata: Metadata = {
-  title: "DriftClash | Register your club, driver and cars",
-  description:
-    "Register your RC drift club, your driver profile and your cars to be part of DriftClash, the Penthouse Drift trading card game.",
+  // Makes the share image URL absolute, which link-preview scrapers need.
+  metadataBase: new URL("https://driftclash.penthousedrift.com"),
+  title: SITE_TITLE,
+  description: SITE_DESCRIPTION,
+  openGraph: {
+    type: "website",
+    siteName: "DriftClash",
+    title: SITE_TITLE,
+    description: SITE_DESCRIPTION,
+    url: "/",
+    images: [SHARE_IMAGE],
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: SITE_TITLE,
+    description: SITE_DESCRIPTION,
+    images: [SHARE_IMAGE],
+  },
   icons: {
     icon: [
       { url: "/favicon.png", type: "image/png", sizes: "32x32" },
